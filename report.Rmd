@@ -1,0 +1,194 @@
+---
+title: "Machine learning coursework: Labelling handwritten numeric characters"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, dpi = 320, fig.align='center', fig.width=4, fig.height=4)
+
+# Get required packages
+source('./R/00 Requirements.R')
+
+# Get plots
+plotlist <- list.files('./Plots/')
+plots <- lapply(paste0('./Plots/', plotlist[grepl(".rds", plotlist)]), readRDS)
+names(plots) <- plotlist[grepl(".rds", plotlist)]
+pca <- readRDS('./R/Models/pca.rds')
+tune.2 <- readRDS('./R/Models/knn pca tune.rds')
+```
+
+## Introduction
+
+### Background
+
+- "The task is to take an image of a handwritten digit and determine which of the numbers 0-9 is written in it"
+- Supervised machine learning task
+- Classification-type problem
+
+### Classification problem
+
+- What is a classifcation problem?
+- Subset of supervised learning problems
+- i.e. vector of training data/predictors and a corresponding set of target output values, where our goal is to learn the function that maps the predictors to the target
+- Classification problems are those where the target variable is **discrete** rather than **continuous**
+    + i.e. where the outcomes we are trying to predict are categories (e.g. faces, flower species, dogs vs cats)
+    + As opposed to continuous (e.g. income, age, blood pressure)
+- We do this by training a machine learning algorithm to learn the function that maps training data to target category labels
+
+### Training and test sets
+
+- Our aim is not just to describe the relationships that we identify in a single dataset
+- Also want to be able to predict class membership of new cases
+- That is, we want our algorithm to be able to take new examples it hasn't seen before, and accurately predict what class that example is
+- One way to evaluate how good our algorithm is at doing this, we need a set of "unseen" data to test it on
+- So we train it on one dataset and test it on another
+- If we don't do this, we risk over-fitting to the training data
+- But we also want to not only estimate how good our final model will be at predicting from new data (i.e. validate it). We also want to select the model paramters that are bet for this task. If we just see which set of parameters do best on our holdout data (i.e. use it for model selection), this means we can no longer use our holdout data to *validate* our model, as we have already used it for model selection - so we would risk overfitting to the holdout data
+- In addition, we want our predictions to have *low variance* - we want it to make consistently good predictions on new datasets
+- So we will use **k-fold cross validation**. This involves selecting a random subset of the data to train a model with a certain set of parameters, then testing it on the rest of the data. This is repeated a number of times, and then the entire process is repeated for other sets of parameter values. We can then select the parameter value for our final model that has the highest average accuracy across training folds with the lowest variance.
+- To avoid overfitting to the test data, we will also keep an entirely separate set of hold-out data, which will be used to *validate* the final model (i.e. to estimate how well it is likely to perform on entirely new 'unseen' data.)
+
+### The MNIST dataset
+
+- Large datset of images of handwritten digits (put more background on this from website)
+- Labelled 0-9
+- Where each image consists of 28x28 pixels, each of which has a numerical value representing its position on the white-black scale
+- So we have a categorical target variable (the label, which can be one of a discrete set of values), and a vector of predictors (the pixels). This is therefore a classification-type supervised learning problem
+- The dataset has already been split into training and test data
+- Frequency of each digit in the dataset shown below. Ones are most common and fives are least common
+
+```{r, out.width = "50%"}
+plots$freqplot.rds + labs(title = "Frequency of digits in MNIST dataset")
+
+```
+
+
+## Dimensionality Reduction
+
+- Important to explore the dataset before analysing it
+- Concept of the high-dimensional vector of predictors
+- Some pairs of digits may be more 'similar' to one another than other pairs are. For example, many people may draw 7's in a similar way to how they draw 1's
+- We can quantify and visualise this similarity using dimensionality reduction
+- Each case consists of a label (0-9) and a 784-dimension vector of predictors (one dimension for each pixel in the 28x28 image)
+- We can reduce these to 2 dimensions using a dimensionality reduction algorithm
+
+### Principal Component Analysis
+
+- First algorithm we will try. Classic approach to dimensionality reduction
+- (Explain what PCA does)
+- Plot below shows that the first 2 principal components explain around 17% of the variation in the data
+- Even 20 components explains only around two thirds
+
+```{r, out.width = "50%"}
+
+plots$cum_plot.rds
+
+```
+
+- Despite this, we can still use this model to see some of the similarities and differences between the digits
+
+```{r, fig.width = 8, fig.height = 6}
+
+plots$pca_plot.rds + labs(title = "MNIST digits by first two principal components")
+
+```
+
+- As these two components explain relatively little of the variation, the pciture is not particularly clear
+- However, even so, we can see that zeroes and ones are generally far apart from one another. It seems as though these two digits are very dissimilar to one another when drawn by hand
+- Twos and nines are also fairly dissimilar
+- The fives group overlaps significantly with threes and eights
+
+### t-SNE
+
+- Alternative dimensionality reduction algorithm
+- (Brief explanation of what it is)
+- Has been found in the ltierature to provide a clearer picture than PCA in a variety of contexts, including the MNIST dataset (http://www.jmlr.org/papers/volume9/vandermaaten08a/vandermaaten08a.pdf)
+- (Describe model training)
+- The plot below shows a sample of the digits plotted according to their two t-SNE component scores
+
+```{r, fig.width = 8, fig.height = 6}
+
+plots$tsne_plot.rds + labs(title = "t-SNE Dimensionality reduction",
+                  x = "t-SNE 1",
+                  y = "t-SNE 2")
+
+```
+
+- This picture is much clearer, with more separation between the digits
+- Zeroes and ones still far apart, as with PCA
+- Fives, eights and threes still close together, with some overlap
+- Other patterns emerge much more clearly (e.g. zeroes closest to sizes and fives, lots of overlap between nines and fours, both of which are similar to sevens)
+
+An example of two different digits occupying the "fives" space can be seen below:
+
+<center>
+
+![Hand-drawn digits similar to a typical five](plots/example_fives.png)
+
+</center>
+
+### K-Nearest Neighbour
+
+#### Training the model
+
+- K-nearest neighbour predicts class membership by using all predictors to calculate the distance between cases in the data
+- When predicting the class of a particular case, the algorithm finds its *k* nearest neighbours (with k defined in the model specification), looks at their class membership, finds which class the majority of them belong to, and assigns that class to the case in question
+- A new, unseen case will be compared to the cases the model was trained on, and given a class according to the majority class membership of its k nearest neighbours
+- We can estimate the optimal value for *k* using the cross-validation technique described in the introduction
+- Due to limited availability of computing power, we will train our model on a subset of the MNIST training data consisting of 2,000 randomly selected cases. We will also employ a random search strategy to identify the optimal value of *k* through cross validation.
+- We will also use the *kappa* metric to estimate how much better than chance our model is at estimating class membership
+- The plot below shows average percentage accuracy and kappa values for each model across cross-validation folds, along with the variance in these metrics
+
+```{r, fig.width = 8, fig.height = 6}
+
+gridExtra::grid.arrange(plots$accuracy_plot.rds, plots$kappa_plot.rds, ncol=2)
+
+```
+
+- The highest performing model across cross-validation folds was for *k* = 41, with an average error rate of 0.168 (or 16.8%) and average *kappa* = 0.813 (indicating the model performs substantially better than chance, according to common effect size guidelines)
+- The cross validation error rate for this value of *k* had approximately average variance across folds: its standard deviation for accuracy was 0.02, the same as the average for these models (to 2 decimal places)
+
+#### Validating the model
+
+- On the holdout data, our final model had an error rate of 0.14 (or 14%)
+- This was similar to the error rate obtained from cross-validation, suggesting we do not have evidence of overfitting
+- It is substantially higher than the error rates obtained in the literature for k-nn methods, however. Examples include [LeCun et al (1988)](http://yann.lecun.com/exdb/publis/index.html#lecun-98), achieving a 5% error rate, and [Kenneth Wilder](http://finmath.uchicago.edu/~wilder/Mnist/), achieving a 3% error rate. 
+- This is most likely because we used only a very small proportion of the available data to train our model (due to computing power limitations)
+
+The plot below shows how the model's performance varies across the different digits in the test set.
+
+```{r, fig.width = 12, fig.height = 8}
+
+gridExtra::grid.arrange(plots$testset_plot_n.rds + labs(title = "Number of predictions in each class"),
+                        plots$testset_plot_pct.rds, ncol=2)
+
+```
+
+We can see that our model performs least well on the digits 9 (77% accuracy) and 1 (71% acccuracy). Nines are frequently confused with fours (15% of cases), whilst ones are frequently confused with twos and sevens. This is consistent with the findings from our dimensionality reduction exercise, which showed that these classes were the closest to each other in the feature space.
+
+### Dimensionality-reduced K-NN
+
+Owing to the so-called "curse of dimensionality", the k-nearest neighbour algorithm can suffer when classifying high-dimensional data. This is likely to be exacerbated by the fact that we have had to reduce the size of the training data due to computational limitations. The dimensionality curse results from the fact that, as the number of dimensions increases, the number of data points per axis in the high-dimensional space reduces exponentially. The fact that we've had to filter to a subset of cases will mean we have even fewer cases per axis in our 784-dimension space.
+
+To try and mitigate this issue, we will use principle component analysis to reduce the number of dimensions on which we will train our model.
+
+#### Training the model
+
+The screeplot below shows the results from the principal component analysis. In order to explain more than 80% of the variance in the data, we will retain the first 44 principal components.
+
+```{r}
+
+screeplot(pca, type = "lines", main = "Principle Component Analysis screeplot", npcs = 50)
+
+```
+
+The knn model was trained and tuned using the same cross-validation procedure as in the previous section. The results are plotted below.
+
+#### Model training plots
+
+```{r, fig.width = 8, fig.height = 6}
+
+gridExtra::grid.arrange(plots$accuracy_pca_plot.rds + labs(title = ""), plots$kappa_pca_plot.rds, ncol=2)
+
+```
+
+We find that the best value of *k* is again 41. However, this reduced dimension model performs less well in training than the higher-dimension model: the best model had an accuracy of only `r round(max(tune.2$knn$results$Accuracy, na.rm = TRUE), 2) * 100`%.
