@@ -18,6 +18,8 @@ tune.2 <- readRDS('./R/Models/knn pca tune.rds')
 
 ## Introduction
 
+The code to replicate this report can be found at https://github.com/jtattersall09403/brookes_ml_intro
+
 ### Background
 
 - "The task is to take an image of a handwritten digit and determine which of the numbers 0-9 is written in it"
@@ -116,7 +118,7 @@ plots$tsne_plot.rds + labs(title = "t-SNE Dimensionality reduction",
 - This picture is much clearer, with more separation between the digits
 - Zeroes and ones still far apart, as with PCA
 - Fives, eights and threes still close together, with some overlap
-- Other patterns emerge much more clearly (e.g. zeroes closest to sizes and fives, lots of overlap between nines and fours, both of which are similar to sevens)
+- Other patterns emerge much more clearly (e.g. zeroes closest to sixes and fives, lots of overlap between nines and fours, both of which are similar to sevens)
 
 An example of two different digits occupying the "fives" space can be seen below:
 
@@ -165,6 +167,8 @@ gridExtra::grid.arrange(plots$testset_plot_n.rds + labs(title = "Number of predi
 
 We can see that our model performs least well on the digits 9 (77% accuracy) and 1 (71% acccuracy). Nines are frequently confused with fours (15% of cases), whilst ones are frequently confused with twos and sevens. This is consistent with the findings from our dimensionality reduction exercise, which showed that these classes were the closest to each other in the feature space.
 
+NB: As these are test set results, they are included here as an estimate of how well this knn model would perform on new data. They will *not* be used for model selection in the later sections, when comparing performance against a second algorithm. To do so would be to risk overfitting to the test set data.
+
 ### Dimensionality-reduced K-NN
 
 Owing to the so-called "curse of dimensionality", the k-nearest neighbour algorithm can suffer when classifying high-dimensional data. This is likely to be exacerbated by the fact that we have had to reduce the size of the training data due to computational limitations. The dimensionality curse results from the fact that, as the number of dimensions increases, the number of data points per axis in the high-dimensional space reduces exponentially. The fact that we've had to filter to a subset of cases will mean we have even fewer cases per axis in our 784-dimension space.
@@ -175,9 +179,11 @@ To try and mitigate this issue, we will use principle component analysis to redu
 
 The screeplot below shows the results from the principal component analysis. In order to explain more than 80% of the variance in the data, we will retain the first 44 principal components.
 
-```{r}
+##### Principle Component Analysis screeplot
 
-screeplot(pca, type = "lines", main = "Principle Component Analysis screeplot", npcs = 50)
+```{r, fig.width = 4, fig.height = 4}
+
+screeplot(pca, type = "lines", npcs = 50)
 
 ```
 
@@ -192,3 +198,6 @@ gridExtra::grid.arrange(plots$accuracy_pca_plot.rds + labs(title = ""), plots$ka
 ```
 
 We find that the best value of *k* is again 41. However, this reduced dimension model performs less well in training than the higher-dimension model: the best model had an accuracy of only `r round(max(tune.2$knn$results$Accuracy, na.rm = TRUE), 2) * 100`%.
+
+### Support Vector Machine
+
