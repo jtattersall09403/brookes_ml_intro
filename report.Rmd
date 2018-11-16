@@ -201,3 +201,60 @@ We find that the best value of *k* is again 41. However, this reduced dimension 
 
 ### Support Vector Machine
 
+- SVMs have had good performance classifying the MNIST dataset in the past (e.g. Le Cun et al, 1998; < 2% error rate)
+- And typically perform well on high-dimensional data (reference)
+- So we will train an SVM model and compare it with knn, tuning the C (cost) parameter to compare different svm model specifications
+- In addition, we noticed in the previous experiment that the error rate increased with the value of k
+- We will therefore retrain our knn model, including k=1 as one of the model specifications
+- Random search repeated 5-fold cross validation used when training both the knn and svm models to compare performance and select the optimum model
+- The test set will only be used once the final model has been selected, to estimate how it would perform on noew unseen data
+
+#### Training the model
+
+- Summary of svm
+- Plots show its performance (using Kappa and % Accuracy metrics, as this is a balanced classification task) as compared with knn
+
+##### Accuracy metrics for knn and svm models
+
+```{r, fig.height = 12, fig.width = 8}
+
+gridExtra::grid.arrange(plots$svm_accuracy_plot.rds, plots$svm_kappa_plot.rds, ncol=2)
+
+```
+
+We find that although the svm specifications generally perform better than the knn models, the very best-performing model is knn-1: i.e. the knn model with `k=1`, achieving an 89.2% accuracy rate (i.e. a 10.8% classification error rate). Although we might expect such a low value of k to result in a model that fits to random noise in the data, the fact that it has such a low error rate in cross validation (and low variation across folds) suggests that this is not the case here. We will therefore select a knn model with `k=1` as our final model.
+
+#### Validating the model
+
+On the holdout test dataset, our final KNN model had an error rate of just 8.7%. The plot below shows how accurately it predicts each numerical class in the holdout data.
+
+```{r, fig.width = 12, fig.height = 8}
+
+gridExtra::grid.arrange(plots$knn1_testset_plot_n.rds + labs(title = "Number of predictions in each class"),
+                        plots$knn1_testset_plot_pct.rds, ncol=2)
+
+```
+
+
+We can see that our final model performs least well when classifying nines, on which it has an 85% accuracy rate. Note that it classifies nines as fours 7% of the time, the most common misclassification across all digits. This is in line with what we might expect from our dimensionality reduction stage, which showed that there is a significant amount of overlap between nines and fours in the feature space.
+
+### Conclusion
+
+- Write a brief conclusion on the results and  compare to results published for other algorithms on the data set homepage
+    + Similar performance level on hold-out data to linear classifiers from Le Cun et al, 1998 (e.g. 1-layer nerual network and pariwise linear classifier)
+    + But higher error rate than their results for k-nearest neighbour models
+    + Most likely resulting from the fact that we only included 2000 samples in training (due to limits on available computing power)
+- Which approach and parameter value is best suited?
+    + Knn with `k=1`
+    + Highest average accuracy (i.e. lowest classification error) and kappa values across cross-validation folds in training, with relatively low variance across folds
+- What other properties than just the classification error could be important to decide which method is most suited?
+    + As this was a fairly balanced classification problem (i.e. the frequency of each class in the dataset was roughly equal), classification error is a reasonable method for model selection
+    + We also used Kappa, as an indication of how much better than chance each model performed
+    + This would be particularly useful for an imbalanced classification task - e.g. on a fraud detection task, where there would be very few members of the positive class, an algorithm could achieve a ery low classification error rate by simply marking all transactions as non-fraudulent (which would not be very helpful!)
+    + In such cases, other metrics would be needed. These might include the use of Receiver Operator Curves (and the area under the ROC curve), to select the optimum trade-off between false positives and false negatives. This optimisation would need to take place alongside domain expert knowledge around the relative importance of false negatives and false positives (e.g. a driverless car that brakes more than it needs to is probably more desirable than one that doesn't break when it does need to!)
+    + In other situations where we are more interested in assigning class probabilities than outright class memberships (e.g. if we were a bookmaker estimating the probability of a football player scoring a goal in a match) then we might want to use a log-loss metric to penalise models according to how far their assigned probabilities are from the actual outcome (i.e. "near misses" are penalised less than "severe misses")
+- Explain possible current limitations of your solutions and possible further strategies to improve on the results
+    + Number of samples selected for training: accuracy would almost certainly be improved by using a more powerful machine that could be trained on all of the training samples
+    + Tuning models over a larger number of parameters: For computational reasons, we trained a relatively small number of models (i.e. tuned each model over a relatively small parameter range). Fine-tuning each model with different parameters may improve performance
+    + Use of convolutional neural networks (which generally require even more computational power, usually implemented via GPU): These tend to have the best performance on this task, from the MNIST literature
+    + Pre-processing: results from the literature suggest that performance can be substantially improved through pre-processing techniques such as deskewing, noise removal, blurring and so on, achieving error rates as low as 0.35 for non-convolutional algorithms (and 0.23 for convolutional nets)
